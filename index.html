@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PeopleFlow HR — Human Resource Management</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ═══════════════════════════════════════════
    PEOPLEFLOW HR v1.0 — STAKEHOLDER PROTOTYPE
@@ -556,6 +559,17 @@ const COUNTRY_FEES = {
 // Includes HR Director Alo Mohamed, HR Manager Aisha Zoona, HR Assistant Ifham
 // + PayFlow-aligned users (Dilantha, Priya, Sara, etc.)
 let EMPLOYEES = [
+  // ── SYSTEM ADMIN (super-user) ──
+  { id:'sysadmin', regNo:'PS-SYS-2020-0001', name:'System Administrator', initials:'SA', email:'admin@psms.mv', pass:'SysAdmin@2026',
+    position:'System Administrator', department:'IT', entity:'PSMS', supervisor:null,
+    type:'local', nationality:'Maldivian', dob:'1985-01-01', joinDate:'2020-01-01', gender:'Male',
+    phone:'+960 777-0001', address:'PSMS HQ', emergency:{ name:'—', relation:'—', phone:'—' },
+    bankAcc:{ bank:'BML', accNo:'7700000001', branch:'Male\'' },
+    photo:null, signature:null, role:'sysadmin', mustChangePwd:false,
+    salary:{ basic:0, allowances:0, currency:'MVR' },
+    socials:{ linkedin:'', facebook:'', twitter:'', instagram:'' },
+    leaveBalance:{},
+    documents:[]},
   // ── HR DEPARTMENT ──
   { id:'alo', regNo:'PS-EMP-2020-1001', name:'Alo Mohamed', initials:'AM', email:'alo@psms.mv', pass:'Alo@2026',
     position:'HR Director', department:'HR', entity:'PSMS', supervisor:null,
@@ -978,6 +992,133 @@ function nextDocNo(prefix){
   return `${prefix}-${new Date().getFullYear()}-${String(SEQUENCES[prefix]).padStart(4,'0')}`;
 }
 
+// ── LETTER TEMPLATES (admin-configurable defaults with placeholders) ──
+// Available placeholders: {EMPLOYEE_NAME}, {FIRST_NAME}, {POSITION}, {DEPARTMENT},
+// {ENTITY}, {ENTITY_NAME}, {REG_NO}, {JOIN_DATE}, {SALARY}, {SALARY_WORDS},
+// {BASIC}, {ALLOWANCES}, {DATE}, {EMAIL}, {PHONE}, {NATIONALITY}
+let LETTER_TEMPLATES = [
+  { id:'tpl-service', kind:'service', name:'Employment Verification Letter', active:true,
+    title:'Employment Verification Letter',
+    body:`This is to certify that {EMPLOYEE_NAME} (Reg No: {REG_NO}) has been employed with {ENTITY_NAME} as a {POSITION} in the {DEPARTMENT} department since {JOIN_DATE}.
+
+{FIRST_NAME} is currently a permanent member of staff and is in good standing with the company.
+
+This letter is issued upon the employee's request for {PURPOSE}.
+
+For any verification or further information, please contact our HR department.` },
+  { id:'tpl-salary', kind:'salary', name:'Salary Confirmation Letter', active:true,
+    title:'Salary Confirmation Letter',
+    body:`This is to confirm that {EMPLOYEE_NAME} (Reg No: {REG_NO}), employed as {POSITION} in our {DEPARTMENT} department, draws the following monthly compensation:
+
+   Basic Salary:    {BASIC}
+   Allowances:      {ALLOWANCES}
+   Gross Total:     {SALARY}
+
+The employee has been with {ENTITY_NAME} since {JOIN_DATE} and is in continuous active employment.
+
+This letter is issued for {PURPOSE}.` },
+  { id:'tpl-warning', kind:'warning', name:'Written Warning', active:true,
+    title:'Written Warning',
+    body:`This letter serves as a formal written warning to {EMPLOYEE_NAME} (Reg No: {REG_NO}), {POSITION}, regarding {PURPOSE}.
+
+We expect immediate and sustained improvement in this matter. Please note that any further occurrence may lead to additional disciplinary action up to and including termination of employment.
+
+You are required to acknowledge receipt of this warning. A copy will be placed in your personnel file.
+
+If you have any concerns or wish to discuss this matter, please contact the HR department within seven (7) days.` },
+  { id:'tpl-termination', kind:'termination', name:'Termination of Employment', active:true,
+    title:'Termination of Employment',
+    body:`Following our prior discussions and in accordance with the terms of your employment contract with {ENTITY_NAME}, this letter confirms the termination of your employment as {POSITION}, effective {DATE}.
+
+Reason: {PURPOSE}
+
+You are required to:
+  1. Return all company property (laptop, ID card, keys, documents) to HR
+  2. Complete handover of pending work to your supervisor
+  3. Settle any outstanding company obligations
+  4. Complete the exit interview with HR
+
+Final settlement including any pending salary, leave encashment, and statutory benefits will be processed within 30 days.
+
+We thank you for your service and wish you the best in your future endeavours.` },
+  { id:'tpl-appreciation', kind:'appreciation', name:'Letter of Appreciation', active:true,
+    title:'Letter of Appreciation',
+    body:`On behalf of {ENTITY_NAME}, we wish to express our sincere appreciation to {EMPLOYEE_NAME} for {PURPOSE}.
+
+Your dedication, commitment, and outstanding performance have been instrumental in our continued success. Your contribution as {POSITION} sets an excellent standard for your colleagues and reflects the values we hold dear.
+
+We are grateful to have you as part of our team and look forward to your continued contributions.` },
+  { id:'tpl-offer', kind:'offer', name:'Offer of Employment', active:true,
+    title:'Offer of Employment',
+    body:`Dear {FIRST_NAME},
+
+We are pleased to offer you the position of {POSITION} at {ENTITY_NAME}, commencing {DATE}.
+
+The terms of your employment are as follows:
+
+   Position:        {POSITION}
+   Department:      {DEPARTMENT}
+   Reporting To:    {SUPERVISOR}
+   Basic Salary:    {BASIC}
+   Allowances:      {ALLOWANCES}
+   Gross Total:     {SALARY}
+
+Your detailed appointment letter, employment contract, and induction schedule will be shared on your first day. Please confirm your acceptance of this offer by returning a signed copy of this letter within seven (7) days.
+
+We look forward to welcoming you to the {ENTITY_NAME} team.` },
+  { id:'tpl-experience', kind:'experience', name:'Experience Certificate', active:true,
+    title:'Experience Certificate',
+    body:`This is to certify that {EMPLOYEE_NAME} (Reg No: {REG_NO}) was employed with {ENTITY_NAME} as {POSITION} in the {DEPARTMENT} department from {JOIN_DATE} to {DATE}.
+
+During the tenure of employment, the employee performed all assigned responsibilities with diligence and to our complete satisfaction. {FIRST_NAME} demonstrated professionalism, commitment, and strong technical capability throughout.
+
+We wish {FIRST_NAME} all the very best in future endeavours.` },
+  { id:'tpl-promotion', kind:'promotion', name:'Promotion Letter', active:true,
+    title:'Promotion Letter',
+    body:`Dear {FIRST_NAME},
+
+We are pleased to inform you that, in recognition of your exceptional performance and contribution to {ENTITY_NAME}, you are being promoted to {POSITION}, effective {DATE}.
+
+Your revised compensation package will be:
+
+   Basic Salary:    {BASIC}
+   Allowances:      {ALLOWANCES}
+   Gross Total:     {SALARY}
+
+All other terms and conditions of your employment remain unchanged. Congratulations on this well-deserved recognition. We look forward to your continued success in this new role.` }
+];
+
+// ── AUDIT LOG (sysadmin) ──
+let AUDIT_LOG = [
+  { id:1, date:'2026-04-26 09:42:11', who:'aisha',    action:'login',          target:'',                 details:'Successful login from 4.1755,73.5093' },
+  { id:2, date:'2026-04-26 09:45:33', who:'aisha',    action:'leave.approve',  target:'PH-LR-2026-0042',  details:'Approved annual leave for Ahmed Ziyad (5 days)' },
+  { id:3, date:'2026-04-26 10:12:08', who:'alo',      action:'login',          target:'',                 details:'Successful login from 4.1755,73.5093' },
+  { id:4, date:'2026-04-26 10:18:24', who:'alo',      action:'employee.create',target:'fatima',           details:'Created new foreign employee Fatima Al-Mansoori' },
+  { id:5, date:'2026-04-26 11:05:17', who:'sysadmin', action:'config.update',  target:'REG_CONFIG',       details:'Updated registration number padding from 3 to 4' },
+  { id:6, date:'2026-04-25 14:22:09', who:'aisha',    action:'letter.issue',   target:'PH-LTR-2026-0014', details:'Issued service letter to Fathimath Shifa' },
+  { id:7, date:'2026-04-25 16:48:55', who:'priya',    action:'leave.apply',    target:'PH-LR-2026-0048',  details:'Applied for sick leave (1 day)' },
+  { id:8, date:'2026-04-25 09:00:00', who:'system',   action:'payroll.run',    target:'PR-2026-03-PS',    details:'March 2026 PSMS payroll completed · MVR 432,000 net' }
+];
+
+function logAudit(action, target, details){
+  AUDIT_LOG.unshift({
+    id:AUDIT_LOG.length+1,
+    date:new Date().toISOString().replace('T',' ').slice(0,19),
+    who:CU?CU.id:'system', action, target, details
+  });
+}
+
+// ── EMAIL HISTORY (per employee) ──
+let EMAIL_LOG = [];
+
+function logEmail(empId, subject, body, docRef){
+  EMAIL_LOG.unshift({
+    id:'em-'+Date.now(),
+    empId, subject, body, docRef,
+    sentBy:CU?CU.id:'system', sentDate:new Date().toISOString().replace('T',' ').slice(0,19)
+  });
+}
+
 // ── DASHBOARD VISIBILITY (admin can configure who sees who's-on-leave) ──
 let DASHBOARD_PERMS = {
   whoOnLeave: { roles:['hr_director','hr_manager','hr_assistant','employee'], scope:'all' },  // 'all' or 'department'
@@ -997,6 +1138,38 @@ let CD = 'ALL';      // current dept filter
 //  NAVIGATION (role-based)
 // ═══════════════════════════════════════════════════
 const NAV = {
+  // ── System Administrator (super-user) ──
+  sysadmin: [
+    { s:'System Administration' },
+    { id:'dashboard',     ic:'🏠', lb:'System Dashboard' },
+    { id:'admin-users',   ic:'🔐', lb:'User Management' },
+    { id:'admin-audit',   ic:'📜', lb:'Audit Log' },
+    { id:'admin-entities',ic:'🏢', lb:'Entities & Departments' },
+    { id:'admin-backup',  ic:'💾', lb:'Backup & Restore' },
+    { s:'HR Operations' },
+    { id:'leave-mgmt',    ic:'📅', lb:'Leave Requests', bg:'leaveQueue' },
+    { id:'inquiry-mgmt',  ic:'💬', lb:'Inquiries', bg:'inqQueue' },
+    { id:'attendance-mgmt',ic:'📊', lb:'Attendance Logs' },
+    { id:'employees',     ic:'👥', lb:'Employees' },
+    { id:'foreign-emps',  ic:'🌍', lb:'Foreign Employees', bg:'visaAlerts' },
+    { s:'Payroll & Documents' },
+    { id:'payroll',       ic:'💰', lb:'Payroll Runs' },
+    { id:'documents-mgmt',ic:'📄', lb:'Documents & Letters' },
+    { id:'letter-templates',ic:'📝', lb:'Letter Templates' },
+    { id:'evaluations',   ic:'⭐', lb:'Evaluations' },
+    { id:'appraisal-tpl', ic:'📋', lb:'Appraisal Templates' },
+    { s:'Configuration' },
+    { id:'leave-types',   ic:'🌴', lb:'Leave Types' },
+    { id:'workflows',     ic:'🔄', lb:'Approval Workflows' },
+    { id:'reg-config',    ic:'#️⃣', lb:'Reg Number Format' },
+    { id:'country-fees',  ic:'🌐', lb:'Country Fee Setup' },
+    { id:'dashboard-perms',ic:'🔒', lb:'Dashboard Visibility' },
+    { id:'fingerprint',   ic:'👆', lb:'Fingerprint Devices' },
+    { s:'Company' },
+    { id:'directory',     ic:'👥', lb:'Employee Directory' },
+    { id:'org-chart',     ic:'🌳', lb:'Organisation Chart' },
+    { id:'policies',      ic:'📋', lb:'Policies & Induction' }
+  ],
   // ── Regular employee ──
   employee: [
     { s:'My Workspace' },
@@ -1081,6 +1254,7 @@ const NAV = {
     { s:'Payroll & Documents' },
     { id:'payroll',       ic:'💰', lb:'Payroll Runs' },
     { id:'documents-mgmt',ic:'📄', lb:'Documents & Letters' },
+    { id:'letter-templates',ic:'📝', lb:'Letter Templates' },
     { id:'evaluations',   ic:'⭐', lb:'Evaluations' },
     { id:'appraisal-tpl', ic:'📋', lb:'Appraisal Templates' },
     { s:'Configuration' },
@@ -1137,9 +1311,10 @@ function openModal(html, size=''){
 function closeModal(){ el('modal').innerHTML=''; }
 
 // Permission helpers
-function isHR(){ return CU && (CU.role==='hr_director'||CU.role==='hr_manager'||CU.role==='hr_assistant'); }
-function isHRAdmin(){ return CU && (CU.role==='hr_director'||CU.role==='hr_manager'); }
-function isDirector(){ return CU && CU.role==='hr_director'; }
+function isHR(){ return CU && (CU.role==='sysadmin'||CU.role==='hr_director'||CU.role==='hr_manager'||CU.role==='hr_assistant'); }
+function isHRAdmin(){ return CU && (CU.role==='sysadmin'||CU.role==='hr_director'||CU.role==='hr_manager'); }
+function isDirector(){ return CU && (CU.role==='sysadmin'||CU.role==='hr_director'); }
+function isSysAdmin(){ return CU && CU.role==='sysadmin'; }
 
 // Find supervisees of a manager
 function getSupervisees(empId){ return EMPLOYEES.filter(e=>e.supervisor===empId); }
@@ -1168,12 +1343,533 @@ function expiringSoon(){
   }).length;
 }
 
+// ═══════════════════════════════════════════════════
+//  PLACEHOLDER FILLER (for letter templates)
+// ═══════════════════════════════════════════════════
+function fillPlaceholders(text, emp, extra){
+  if(!text) return '';
+  extra = extra || {};
+  const supervisor = findEmp(emp.supervisor);
+  const map = {
+    EMPLOYEE_NAME: emp.name,
+    FIRST_NAME:    emp.name.split(' ')[0],
+    POSITION:      emp.position,
+    DEPARTMENT:    DEPTS[emp.department] ? DEPTS[emp.department].name : emp.department,
+    ENTITY:        emp.entity,
+    ENTITY_NAME:   ENTITIES[emp.entity] ? ENTITIES[emp.entity].name : emp.entity,
+    REG_NO:        emp.regNo,
+    JOIN_DATE:     fmtDate(emp.joinDate),
+    SALARY:        `${emp.salary.currency} ${fmt(emp.salary.basic + emp.salary.allowances)}`,
+    BASIC:         `${emp.salary.currency} ${fmt(emp.salary.basic)}`,
+    ALLOWANCES:    `${emp.salary.currency} ${fmt(emp.salary.allowances)}`,
+    DATE:          fmtDate(today()),
+    EMAIL:         emp.email,
+    PHONE:         emp.phone,
+    NATIONALITY:   emp.nationality || 'Maldivian',
+    SUPERVISOR:    supervisor ? supervisor.name : 'HR Department',
+    PURPOSE:       extra.purpose || '[purpose]',
+    END_DATE:      extra.endDate || fmtDate(today())
+  };
+  return text.replace(/\{([A-Z_]+)\}/g, (m, key) => (map[key] !== undefined ? map[key] : m));
+}
+
+// ═══════════════════════════════════════════════════
+//  PDF EXPORT (using jsPDF)
+// ═══════════════════════════════════════════════════
+function pdfHeader(doc, entity, title, docNo){
+  const ent = ENTITIES[entity] || ENTITIES.PSMS;
+  doc.setFillColor(13, 45, 110);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(ent.name, 14, 14);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('PeopleFlow HR · Human Resource Management', 14, 20);
+  if(docNo){
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.text(docNo, 196, 14, { align:'right' });
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.text(fmtDate(today()), 196, 20, { align:'right' });
+  }
+  doc.setTextColor(28, 32, 48);
+  if(title){
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(14);
+    doc.text(title, 105, 40, { align:'center' });
+    doc.setLineWidth(0.5);
+    doc.setDrawColor(13, 45, 110);
+    doc.line(60, 43, 150, 43);
+  }
+}
+
+function pdfFooter(doc){
+  const pageCount = doc.internal.getNumberOfPages();
+  for(let i = 1; i <= pageCount; i++){
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`PeopleFlow HR · System-generated document · Page ${i} of ${pageCount}`, 105, 290, { align:'center' });
+  }
+}
+
+function pdfPayslip(empId, period){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const emp = findEmp(empId);
+  const slip = generatePayslip(empId, period);
+  const monthName = new Date(period+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  pdfHeader(doc, emp.entity, `Payslip — ${monthName}`, slip.id);
+
+  let y = 50;
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.text('EMPLOYEE', 14, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  y += 5; doc.text(emp.name, 14, y);
+  y += 5; doc.setFontSize(9); doc.setTextColor(90); doc.text(`${emp.regNo} · ${emp.position}`, 14, y);
+  y += 4; doc.text(`${DEPTS[emp.department].name}`, 14, y);
+
+  doc.setFontSize(10); doc.setFont('helvetica','bold'); doc.setTextColor(28,32,48);
+  doc.text('BANK DETAILS', 120, 50);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90);
+  doc.text(`${emp.bankAcc.bank}`, 120, 56);
+  doc.text(`A/C: ${emp.bankAcc.accNo}`, 120, 60);
+  doc.text(`${emp.bankAcc.branch}`, 120, 64);
+
+  // Earnings table
+  doc.autoTable({
+    startY: 75,
+    head: [['EARNINGS', 'AMOUNT']],
+    body: slip.earnings.map(e => [e.label, `${emp.salary.currency} ${fmt(e.amount)}`]),
+    foot: [['Gross Pay', `${emp.salary.currency} ${fmt(slip.gross)}`]],
+    theme: 'striped',
+    headStyles: { fillColor:[24,73,169], fontSize:9 },
+    footStyles: { fillColor:[238,242,252], textColor:[13,45,110], fontSize:10, fontStyle:'bold' },
+    columnStyles: { 1: { halign:'right', font:'courier' } }
+  });
+
+  // Deductions table
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 8,
+    head: [['DEDUCTIONS', 'AMOUNT']],
+    body: slip.deductions.map(d => [d.label, `${emp.salary.currency} ${fmt(d.amount)}`]),
+    theme: 'striped',
+    headStyles: { fillColor:[153,27,27], fontSize:9 },
+    columnStyles: { 1: { halign:'right', font:'courier', textColor:[153,27,27] } }
+  });
+
+  // Net Pay
+  const finalY = doc.lastAutoTable.finalY + 10;
+  doc.setFillColor(220, 252, 231);
+  doc.rect(14, finalY, 182, 14, 'F');
+  doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(22,101,52);
+  doc.text('NET PAY', 18, finalY + 9);
+  doc.setFont('courier','bold');
+  doc.text(`${emp.salary.currency} ${fmt(slip.net)}`, 192, finalY + 9, { align:'right' });
+
+  doc.setTextColor(120); doc.setFontSize(8); doc.setFont('helvetica','italic');
+  doc.text(`Paid via PayFlow Pro · Reference: ${ENTITIES[emp.entity].regPrefix}/BML/MVR/${period.slice(2,4)}/0XX`, 105, finalY + 22, { align:'center' });
+
+  pdfFooter(doc);
+  doc.save(`Payslip_${emp.name.replace(/\s+/g,'_')}_${period}.pdf`);
+  toast(`Payslip downloaded`, 'success');
+  logAudit('document.download', slip.id, `Downloaded payslip PDF for ${emp.name} (${period})`);
+}
+
+function pdfLetter(docId){
+  const { jsPDF } = window.jspdf;
+  const d = DOCUMENTS.find(x => x.id === docId); if(!d) return;
+  const e = findEmp(d.empId);
+  const issuedBy = findEmp(d.issuedBy);
+  const doc = new jsPDF();
+  pdfHeader(doc, e.entity, d.title, d.docNo);
+
+  let y = 55;
+  doc.setFontSize(9); doc.setTextColor(80);
+  doc.text(`Date: ${fmtDate(d.issuedDate)}`, 196, y, { align:'right' });
+  y += 8;
+  doc.setTextColor(28,32,48); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('To:', 14, y);
+  doc.setFont('helvetica','normal');
+  doc.text(`${e.name}`, 25, y);
+  y += 5; doc.text(`${e.regNo} · ${e.position}`, 25, y);
+  y += 5; doc.text(`${DEPTS[e.department].name}`, 25, y);
+
+  y += 12;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  doc.text(`Dear ${e.name.split(' ')[0]},`, 14, y);
+
+  y += 8;
+  const lines = doc.splitTextToSize(d.content, 182);
+  doc.text(lines, 14, y);
+  y += lines.length * 5.5;
+
+  if(d.purpose){
+    y += 4;
+    doc.setFont('helvetica','italic');
+    doc.text(`Issued for: ${d.purpose}`, 14, y);
+    doc.setFont('helvetica','normal');
+  }
+
+  y += 12;
+  doc.text('Should you require any clarification, please contact the HR department.', 14, y);
+
+  y += 22;
+  doc.text('Yours sincerely,', 14, y);
+  y += 18;
+  doc.setLineWidth(0.3); doc.line(14, y, 80, y);
+  y += 4;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text(issuedBy ? issuedBy.name : 'HR Department', 14, y);
+  y += 4;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90);
+  doc.text(`${issuedBy ? issuedBy.position : 'Human Resources'}`, 14, y);
+  y += 4;
+  doc.text(`${ENTITIES[e.entity].name}`, 14, y);
+
+  pdfFooter(doc);
+  doc.save(`${d.docNo}_${d.title.replace(/\s+/g,'_')}.pdf`);
+  toast('Letter downloaded as PDF', 'success');
+  logAudit('document.download', d.docNo, `Downloaded ${d.kind} letter PDF for ${e.name}`);
+}
+
+function pdfEvaluation(evId){
+  const { jsPDF } = window.jspdf;
+  const ev = EVALUATIONS.find(x => x.id === evId); if(!ev) return;
+  const e = findEmp(ev.empId), evor = findEmp(ev.evaluator);
+  const tpl = APPRAISAL_TEMPLATES.find(t => t.id === ev.templateId);
+  const doc = new jsPDF();
+  pdfHeader(doc, e.entity, `Performance Evaluation`, ev.docNo);
+
+  let y = 55;
+  doc.setFontSize(10); doc.setFont('helvetica','bold');
+  doc.text('EMPLOYEE', 14, y); doc.text('OVERALL SCORE', 120, y);
+  y += 6; doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  doc.text(e.name, 14, y);
+  doc.setFont('helvetica','bold'); doc.setFontSize(20);
+  doc.setTextColor(ev.overallScore>=4?22:ev.overallScore>=3?180:153, ev.overallScore>=4?101:ev.overallScore>=3?100:27, ev.overallScore>=4?52:ev.overallScore>=3?14:27);
+  doc.text(`${ev.overallScore.toFixed(2)} / 5`, 120, y+2);
+
+  doc.setTextColor(28,32,48); doc.setFontSize(9); doc.setFont('helvetica','normal');
+  y += 5; doc.text(`${e.regNo} · ${e.position}`, 14, y);
+  y += 4; doc.text(`Period: ${ev.period} · Evaluated by: ${evor?evor.name:'—'} · ${fmtDate(ev.date)}`, 14, y);
+
+  if(tpl){
+    doc.autoTable({
+      startY: y + 8,
+      head: [['Criterion', 'Description', 'Weight', 'Score']],
+      body: tpl.criteria.map(c => [
+        c.name,
+        c.desc,
+        `${c.weight}%`,
+        `${ev.scores[c.id] || 0} / 5`
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor:[24,73,169], fontSize:9 },
+      columnStyles: { 0: { fontStyle:'bold' }, 2: { halign:'center' }, 3: { halign:'center', fontStyle:'bold' } }
+    });
+  }
+
+  if(ev.comments){
+    const fy = doc.lastAutoTable.finalY + 10;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text('OVERALL COMMENTS', 14, fy);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    const cl = doc.splitTextToSize(ev.comments, 182);
+    doc.text(cl, 14, fy + 6);
+  }
+
+  pdfFooter(doc);
+  doc.save(`${ev.docNo}_Evaluation_${e.name.replace(/\s+/g,'_')}.pdf`);
+  toast('Evaluation downloaded', 'success');
+  logAudit('document.download', ev.docNo, `Downloaded evaluation PDF for ${e.name}`);
+}
+
+// ═══════════════════════════════════════════════════
+//  EXCEL EXPORT (using SheetJS / xlsx)
+// ═══════════════════════════════════════════════════
+function exportExcel(rows, sheetName, fileName){
+  if(!rows || !rows.length){ toast('No data to export','warn'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Auto-fit columns
+  const cols = Object.keys(rows[0]).map(k => ({
+    wch: Math.max(k.length, ...rows.map(r => String(r[k]||'').length)) + 2
+  }));
+  ws['!cols'] = cols;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, fileName);
+  toast(`Exported ${rows.length} rows to Excel`, 'success');
+  logAudit('export.excel', fileName, `Exported ${rows.length} rows · ${sheetName}`);
+}
+
+function exportEmployeesExcel(){
+  const rows = EMPLOYEES.filter(e=>e.role!=='sysadmin').map(e => ({
+    'Reg No':       e.regNo,
+    'Name':         e.name,
+    'Email':        e.email,
+    'Position':     e.position,
+    'Department':   DEPTS[e.department]?DEPTS[e.department].name:e.department,
+    'Entity':       e.entity,
+    'Type':         e.type,
+    'Nationality':  e.nationality||'Maldivian',
+    'Join Date':    e.joinDate,
+    'DOB':          e.dob,
+    'Phone':        e.phone,
+    'Address':      e.address,
+    'Bank':         e.bankAcc.bank,
+    'Account No':   e.bankAcc.accNo,
+    'Basic':        e.salary.basic,
+    'Allowances':   e.salary.allowances,
+    'Gross Salary': e.salary.basic + e.salary.allowances,
+    'Currency':     e.salary.currency,
+    'Supervisor':   e.supervisor ? findEmp(e.supervisor)?.name||'' : '',
+    'Role':         e.role
+  }));
+  exportExcel(rows, 'Employees', `Employees_${today()}.xlsx`);
+}
+
+function exportAttendanceExcel(){
+  const rows = ATTENDANCE.map(a => {
+    const e = findEmp(a.empId);
+    let hrs = '';
+    if(a.signIn && a.signOut){
+      const [ih,im] = a.signIn.split(':').map(Number);
+      const [oh,om] = a.signOut.split(':').map(Number);
+      hrs = (((oh*60+om)-(ih*60+im))/60).toFixed(2);
+    }
+    return {
+      'Date':     a.date,
+      'Reg No':   e?e.regNo:'',
+      'Name':     e?e.name:a.empId,
+      'Entity':   e?e.entity:'',
+      'Sign In':  a.signIn||'',
+      'Method In':a.inMethod||'',
+      'Loc In':   a.inLoc||'',
+      'Sign Out': a.signOut||'',
+      'Method Out':a.outMethod||'',
+      'Loc Out':  a.outLoc||'',
+      'Hours':    hrs,
+      'Status':   a.status
+    };
+  });
+  exportExcel(rows, 'Attendance', `Attendance_${today()}.xlsx`);
+}
+
+function exportLeavesExcel(){
+  const rows = LEAVE_REQS.map(l => {
+    const e = findEmp(l.empId);
+    const lt = LEAVE_TYPES.find(t=>t.id===l.leaveType);
+    return {
+      'Doc #':     l.docNo,
+      'Reg No':    e?e.regNo:'',
+      'Name':      e?e.name:l.empId,
+      'Entity':    e?e.entity:'',
+      'Type':      lt?lt.name:l.leaveType,
+      'From':      l.from,
+      'To':        l.to,
+      'Days':      l.days,
+      'Reason':    l.reason,
+      'Applied':   l.appliedDate,
+      'Status':    l.status,
+      'Approved By': l.approvedBy ? findEmp(l.approvedBy)?.name||'' : '',
+      'Approved Date': l.approvedDate||''
+    };
+  });
+  exportExcel(rows, 'Leaves', `Leaves_${today()}.xlsx`);
+}
+
+function exportPayrollRunExcel(runId){
+  const r = PAYROLL_RUNS.find(x => x.id === runId); if(!r) return;
+  const rows = EMPLOYEES.filter(e=>e.entity===r.entity && e.role!=='sysadmin').map(e=>{
+    const s = generatePayslip(e.id, r.period);
+    return {
+      'Reg No':     e.regNo,
+      'Name':       e.name,
+      'Position':   e.position,
+      'Bank':       e.bankAcc.bank,
+      'Account No': e.bankAcc.accNo,
+      'Basic':      s.basic,
+      'Allowances': s.allowances,
+      'Gross':      s.gross,
+      'Pension':    s.pension,
+      'Tax':        s.tax,
+      'Net Pay':    s.net,
+      'Currency':   e.salary.currency
+    };
+  });
+  exportExcel(rows, `Payroll_${r.period}_${r.entity}`, `Payroll_${r.period}_${r.entity}.xlsx`);
+}
+
+function exportForeignEmpsExcel(){
+  const rows = EMPLOYEES.filter(e=>e.type==='foreign').map(e => ({
+    'Reg No':       e.regNo,
+    'Name':         e.name,
+    'Nationality':  e.nationality,
+    'Country':      e.countryCode,
+    'Passport No':  e.foreign?.passportNo||'',
+    'Passport Exp': e.foreign?.passportExpiry||'',
+    'Visa No':      e.foreign?.visaNo||'',
+    'Visa Exp':     e.foreign?.visaExpiry||'',
+    'Work Permit':  e.foreign?.workPermitNo||'',
+    'WP Exp':       e.foreign?.workPermitExpiry||'',
+    'Quota Slot':   e.foreign?.quotaSlot||'',
+    'Quota Exp':    e.foreign?.quotaExpiry||'',
+    'Medical Exp':  e.foreign?.medicalExpiry||''
+  }));
+  exportExcel(rows, 'ForeignEmployees', `ForeignEmployees_${today()}.xlsx`);
+}
+
+// ═══════════════════════════════════════════════════
+//  EMAIL DOCUMENT TO EMPLOYEE (mailto + log)
+// ═══════════════════════════════════════════════════
+function emailDocument(kind, refId){
+  let emp, subject, body, docRef;
+
+  if(kind === 'payslip'){
+    const [empId, period] = refId.split('|');
+    emp = findEmp(empId);
+    const slip = generatePayslip(empId, period);
+    const monthName = new Date(period+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+    subject = `Payslip — ${monthName} — ${emp.name}`;
+    body = `Dear ${emp.name.split(' ')[0]},
+
+Please find your salary statement for ${monthName} below. The PDF copy can also be downloaded from the PeopleFlow HR portal.
+
+Payslip No:  ${slip.id}
+Period:      ${monthName}
+Gross Pay:   ${emp.salary.currency} ${fmt(slip.gross)}
+Deductions:  ${emp.salary.currency} ${fmt(slip.pension + slip.tax)}
+Net Pay:     ${emp.salary.currency} ${fmt(slip.net)}
+
+Salary has been paid via PayFlow Pro. Please verify the credit in your bank account.
+
+For any queries, please raise an inquiry through the HR portal.
+
+Regards,
+HR Department
+${ENTITIES[emp.entity].name}`;
+    docRef = slip.id;
+  }
+  else if(kind === 'letter'){
+    const d = DOCUMENTS.find(x => x.id === refId); if(!d) return;
+    emp = findEmp(d.empId);
+    subject = `${d.title} — ${d.docNo}`;
+    body = `Dear ${emp.name.split(' ')[0]},
+
+Please find attached your ${d.title} (Ref: ${d.docNo}).
+
+${d.content}
+
+This letter has been issued for: ${d.purpose}
+
+For any clarification, please contact the HR department.
+
+Regards,
+HR Department
+${ENTITIES[emp.entity].name}`;
+    docRef = d.docNo;
+  }
+  else if(kind === 'evaluation'){
+    const ev = EVALUATIONS.find(x => x.id === refId); if(!ev) return;
+    emp = findEmp(ev.empId);
+    subject = `Performance Evaluation — ${ev.period}`;
+    body = `Dear ${emp.name.split(' ')[0]},
+
+Your performance evaluation for the period "${ev.period}" has been completed.
+
+Overall Score: ${ev.overallScore.toFixed(2)} / 5
+
+${ev.comments || ''}
+
+Please review the full evaluation in the HR portal. Should you wish to discuss your evaluation, please contact your supervisor or the HR department.
+
+Regards,
+HR Department`;
+    docRef = ev.docNo;
+  }
+  else if(kind === 'leave'){
+    const l = LEAVE_REQS.find(x => x.id === refId); if(!l) return;
+    emp = findEmp(l.empId);
+    const lt = LEAVE_TYPES.find(t=>t.id===l.leaveType);
+    subject = `Leave Request ${l.status === 'approved' ? 'Approved' : 'Update'} — ${l.docNo}`;
+    body = `Dear ${emp.name.split(' ')[0]},
+
+Your leave request has been ${l.status}.
+
+Doc No:    ${l.docNo}
+Type:      ${lt.name}
+From:      ${fmtDate(l.from)}
+To:        ${fmtDate(l.to)}
+Days:      ${l.days}
+Status:    ${l.status.toUpperCase()}
+
+${l.status === 'approved' ? 'Please ensure proper handover of your responsibilities before your leave period.' : 'Please contact HR if you have any questions.'}
+
+Regards,
+HR Department`;
+    docRef = l.docNo;
+  }
+  else if(kind === 'custom'){
+    emp = findEmp(refId);
+    subject = '';
+    body = '';
+    docRef = '';
+  }
+
+  if(!emp){ toast('Could not find recipient', 'error'); return; }
+
+  // Show email composer modal so HR can review/edit before sending
+  openModal(`
+    <div class="mh"><div class="mt">📧 Email to ${emp.name}</div><button class="mc" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="al al-i">📨 The email will open in your default mail client (mailto:) and a record will be saved to the employee's email log.</div>
+
+      <div class="fg2">
+        <div class="fg"><label class="fl">To</label><input class="fi" id="em_to" value="${htmlEsc(emp.email)}"></div>
+        <div class="fg"><label class="fl">Cc</label><input class="fi" id="em_cc" placeholder="optional"></div>
+      </div>
+      <div class="fg"><label class="fl">Subject<span class="req">*</span></label><input class="fi" id="em_subj" value="${htmlEsc(subject)}"></div>
+      <div class="fg"><label class="fl">Message</label><textarea class="fta" id="em_body" style="min-height:240px;font-family:'Courier New',monospace;font-size:11px">${htmlEsc(body)}</textarea></div>
+
+      ${docRef ? `<div class="al al-w">📎 <strong>Attachment reminder:</strong> Don't forget to download the PDF and attach it to your email — mailto: doesn't carry attachments. Document ref: <span class="docno">${docRef}</span></div>` : ''}
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="sendEmail('${emp.id}','${docRef}')">📨 Open Email Client</button>
+    </div>
+  `,'lg');
+}
+
+function sendEmail(empId, docRef){
+  const emp = findEmp(empId);
+  const to = el('em_to').value;
+  const cc = el('em_cc').value;
+  const subj = el('em_subj').value;
+  const body = el('em_body').value;
+  if(!to || !subj){ toast('Please provide recipient and subject', 'error'); return; }
+
+  // Build mailto URL
+  let url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  if(cc) url += `&cc=${encodeURIComponent(cc)}`;
+  window.open(url, '_blank');
+
+  // Log it
+  logEmail(empId, subj, body, docRef);
+  logAudit('email.send', docRef||'', `Emailed "${subj}" to ${emp.name}`);
+  closeModal();
+  toast('Email opened in your mail client · log saved', 'success');
+}
+
 
 // ═══════════════════════════════════════════════════
 //  LOGIN
 // ═══════════════════════════════════════════════════
 function renderDemoUsers(){
   const list=[
+    { email:'admin@psms.mv',   pass:'SysAdmin@2026', name:'System Admin',    role:'Super Admin · System',         color:'#991b1b' },
     { email:'alo@psms.mv',     pass:'Alo@2026',     name:'Alo Mohamed',     role:'HR Director · PSMS Group',    color:'#0d2d6e' },
     { email:'aisha@psms.mv',   pass:'Aisha@2026',   name:'Aisha Zoona',     role:'HR Manager · PSMS Group',     color:'#1849a9' },
     { email:'ifham@psms.mv',   pass:'Ifham@2026',   name:'Ifham Ali',       role:'HR Assistant · PSMS Group',   color:'#115e59' },
@@ -1208,6 +1904,7 @@ function doLogin(){
   el('uav').textContent=emp.initials;
   el('unm').textContent=emp.name.split(' ')[0];
   PAGE = 'dashboard';
+  logAudit('login','',`Successful login`);
   renderSidebar();
   renderPunchBar();
   renderMain();
@@ -1349,7 +2046,13 @@ function renderMain(){
     'reg-config': renderRegConfig,
     'country-fees': renderCountryFees,
     'dashboard-perms': renderDashboardPerms,
-    'fingerprint': renderFingerprint
+    'fingerprint': renderFingerprint,
+    'employee-360': renderEmployee360,
+    'letter-templates': renderLetterTemplatesAdmin,
+    'admin-users': renderAdminUsers,
+    'admin-audit': renderAdminAudit,
+    'admin-entities': renderAdminEntities,
+    'admin-backup': renderAdminBackup
   };
   m.innerHTML = (pages[PAGE]||renderDashboard)();
 }
@@ -2038,7 +2741,8 @@ function viewPayslip(period){
     <div class="mf">
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn btn-p" onclick="window.print()">🖨️ Print</button>
-      <button class="btn btn-g" onclick="toast('Payslip downloaded','success')">⬇️ Download PDF</button>
+      <button class="btn btn-g" onclick="pdfPayslip('${emp.id}','${period}')">⬇️ Download PDF</button>
+      <button class="btn btn-o" onclick="emailDocument('payslip','${emp.id}|${period}')">📧 Email to ${emp.name.split(' ')[0]}</button>
     </div>
   `, 'lg');
 }
@@ -2395,6 +3099,453 @@ function renderDirectory(){
 }
 
 function viewEmployee(id){
+  // 360° view — shown only to HR; non-HR sees the lighter card view
+  if(isHR()){
+    nav('employee-360');
+    EMP360_ID = id;
+    EMP360_TAB = 'overview';
+    return;
+  }
+  viewEmployeeBasic(id);
+}
+
+let EMP360_ID = null;
+let EMP360_TAB = 'overview';
+
+function renderEmployee360(){
+  const e = findEmp(EMP360_ID);
+  if(!e){ return `<div class="al al-r">Employee not found.</div>`; }
+  const supervisor = findEmp(e.supervisor);
+  const reports = getSupervisees(e.id);
+
+  // Aggregate data
+  const empLeaves     = LEAVE_REQS.filter(l => l.empId === e.id);
+  const empAttendance = ATTENDANCE.filter(a => a.empId === e.id);
+  const empInquiries  = INQUIRIES.filter(i => i.empId === e.id);
+  const empDocuments  = DOCUMENTS.filter(d => d.empId === e.id);
+  const empEvals      = EVALUATIONS.filter(v => v.empId === e.id);
+  const empEmails     = EMAIL_LOG.filter(m => m.empId === e.id);
+  const pendingLeaves = empLeaves.filter(l => l.status === 'pending').length;
+  const pendingInq    = empInquiries.filter(i => i.status !== 'resolved').length;
+  const totalAttendDays = empAttendance.filter(a => a.signIn).length;
+
+  const tabs = [
+    { id:'overview',    icon:'👤', label:'Overview' },
+    { id:'leaves',      icon:'🌴', label:`Leaves (${empLeaves.length})` },
+    { id:'attendance',  icon:'⏱️', label:`Attendance (${totalAttendDays})` },
+    { id:'payroll',     icon:'💰', label:'Payroll & Payslips' },
+    { id:'documents',   icon:'📎', label:`Documents (${(e.documents||[]).length})` },
+    { id:'letters',     icon:'📄', label:`Letters Issued (${empDocuments.length})` },
+    { id:'evaluations', icon:'⭐', label:`Evaluations (${empEvals.length})` },
+    { id:'inquiries',   icon:'💬', label:`Inquiries (${empInquiries.length})` },
+    { id:'emails',      icon:'📧', label:`Email Log (${empEmails.length})` }
+  ];
+
+  return `
+    <div class="ph">
+      <div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+          <button class="btn btn-sm" onclick="nav('employees')">← Back to Employees</button>
+          <span class="pt" style="margin:0">${e.name}</span>
+          <span class="etag e-${e.entity}" style="font-size:11px;padding:4px 10px">${e.entity}</span>
+          ${e.type==='foreign'?`<span class="bdg b-pap">🌍 ${e.nationality}</span>`:'<span class="bdg b-active">🇲🇻 Local</span>'}
+        </div>
+        <div class="ps">${e.position} · ${DEPTS[e.department].name} · <span class="docno" style="font-size:11px">${e.regNo}</span></div>
+      </div>
+      <div class="brow">
+        ${isHRAdmin()?`<button class="btn btn-p" onclick="editEmployee('${e.id}')">✏️ Edit Profile</button>`:''}
+        <button class="btn btn-o" onclick="emailDocument('custom','${e.id}')">📧 Email ${e.name.split(' ')[0]}</button>
+      </div>
+    </div>
+
+    <!-- Header card with key info -->
+    <div class="card">
+      <div class="cb">
+        <div style="display:grid;grid-template-columns:120px 1fr auto;gap:18px;align-items:start">
+          <div style="text-align:center">
+            ${avatar(e,'emp-avatar lg')}
+          </div>
+          <div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 18px;font-size:12px">
+              <div><strong style="color:var(--t2)">📧 Email:</strong> ${e.email}</div>
+              <div><strong style="color:var(--t2)">📱 Phone:</strong> ${e.phone}</div>
+              <div><strong style="color:var(--t2)">🏠 Address:</strong> ${e.address||'—'}</div>
+              <div><strong style="color:var(--t2)">🎂 DOB:</strong> ${fmtDate(e.dob)}</div>
+              <div><strong style="color:var(--t2)">📅 Joined:</strong> ${fmtDate(e.joinDate)} (${Math.floor((new Date()-new Date(e.joinDate))/(1000*60*60*24*365))} yrs)</div>
+              <div><strong style="color:var(--t2)">👤 Reports To:</strong> ${supervisor?supervisor.name:'— Top of org —'}</div>
+              <div><strong style="color:var(--t2)">🆘 Emergency:</strong> ${e.emergency.name} (${e.emergency.relation}) · ${e.emergency.phone}</div>
+              <div><strong style="color:var(--t2)">🏦 Bank:</strong> ${e.bankAcc.bank} · ${e.bankAcc.accNo}</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:160px">
+            ${pendingLeaves?`<div class="al al-w" style="margin:0;padding:8px 12px;font-size:11px">⚠️ ${pendingLeaves} pending leave${pendingLeaves>1?'s':''}</div>`:''}
+            ${pendingInq?`<div class="al al-i" style="margin:0;padding:8px 12px;font-size:11px">💬 ${pendingInq} open inquir${pendingInq>1?'ies':'y'}</div>`:''}
+            ${e.type==='foreign'&&e.foreign?(()=>{
+              const minDays = Math.min(...['visaExpiry','workPermitExpiry','medicalExpiry','quotaExpiry'].map(k=>{
+                if(!e.foreign[k]) return 9999;
+                return Math.ceil((new Date(e.foreign[k])-new Date())/(1000*60*60*24));
+              }));
+              if(minDays<60) return `<div class="al al-r" style="margin:0;padding:8px 12px;font-size:11px">🌍 Doc expires ${minDays<0?'EXPIRED':'in '+minDays+'d'}</div>`;
+              return '';
+            })():''}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      ${tabs.map(t => `<button class="tab${EMP360_TAB===t.id?' on':''}" onclick="EMP360_TAB='${t.id}';renderMain()">${t.icon} ${t.label}</button>`).join('')}
+    </div>
+
+    ${renderEmp360Content(e)}
+  `;
+}
+
+function renderEmp360Content(e){
+  const tab = EMP360_TAB;
+
+  if(tab === 'overview'){
+    return `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
+        <div class="card">
+          <div class="ch"><div class="ct">Compensation & Employment</div></div>
+          <div class="cb">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;font-size:12px">
+              <div><div style="font-size:10px;color:var(--t2);text-transform:uppercase;font-weight:700">Basic Salary</div><div style="font-size:18px;font-weight:800;margin-top:3px">${e.salary.currency} ${fmt(e.salary.basic)}</div></div>
+              <div><div style="font-size:10px;color:var(--t2);text-transform:uppercase;font-weight:700">Allowances</div><div style="font-size:18px;font-weight:800;margin-top:3px">${e.salary.currency} ${fmt(e.salary.allowances)}</div></div>
+              <div><div style="font-size:10px;color:var(--t2);text-transform:uppercase;font-weight:700">Gross Total</div><div style="font-size:18px;font-weight:800;color:var(--green);margin-top:3px">${e.salary.currency} ${fmt(e.salary.basic+e.salary.allowances)}</div></div>
+            </div>
+            <div style="margin-top:14px;padding:12px;background:var(--s2);border-radius:var(--r);font-size:11px;color:var(--t2)">
+              Role: <strong>${e.role.replace('_',' ')}</strong> · Type: <strong>${e.type}</strong>${e.type==='foreign'?' (' + e.nationality + ')':''} · Login: <code>${e.email}</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><div class="ct">Leave Balance</div></div>
+          <div class="cb">
+            ${LEAVE_TYPES.filter(lt=>lt.active).slice(0,5).map(lt=>{
+              const bal = e.leaveBalance[lt.id]||0;
+              const pct = Math.min(100,(bal/lt.defaultEntitlement)*100);
+              return `<div class="lb-row" style="padding:6px 0">
+                <div class="lb-icon" style="background:${lt.color}22;color:${lt.color};width:30px;height:30px;font-size:14px">${lt.icon}</div>
+                <div class="lb-info">
+                  <div class="lb-name" style="font-size:11px">${lt.name}</div>
+                  <div class="lb-bar"><div class="lb-fill" style="width:${pct}%;background:${lt.color}"></div></div>
+                </div>
+                <div class="lb-num" style="color:${lt.color};font-size:14px">${bal}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      ${e.type==='foreign'&&e.foreign?`
+      <div class="card">
+        <div class="ch"><div class="ct">🌍 Foreign Employee Documents</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead>
+            <tbody>
+              ${[
+                ['Passport',     e.foreign.passportNo,    e.foreign.passportExpiry],
+                ['Employment Visa', e.foreign.visaNo,     e.foreign.visaExpiry],
+                ['Work Permit',  e.foreign.workPermitNo, e.foreign.workPermitExpiry],
+                ['Quota Slot',   e.foreign.quotaSlot,    e.foreign.quotaExpiry],
+                ['Medical Insurance', '—',               e.foreign.medicalExpiry]
+              ].map(([lbl,no,exp])=>{
+                if(!exp) return '';
+                const days=Math.ceil((new Date(exp)-new Date())/(1000*60*60*24));
+                const cls=days<0?'b-rej':days<30?'b-rej':days<60?'b-pap':'b-paid';
+                const status=days<0?'EXPIRED':days<30?'Critical':days<60?'Renew Soon':'OK';
+                return `<tr>
+                  <td><strong>${lbl}</strong></td>
+                  <td>${no||'—'}</td>
+                  <td>${fmtDate(exp)}</td>
+                  <td><span class="bdg ${cls}">${status} (${days<0?'expired '+Math.abs(days):days+'d'} ${days<0?'days ago':'left'})</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table></div>
+        </div>
+      </div>` : ''}
+
+      ${(()=>{const reports=getSupervisees(e.id); return reports.length?`
+      <div class="card">
+        <div class="ch"><div class="ct">👥 Direct Reports (${reports.length})</div></div>
+        <div class="cb">
+          <div class="emp-grid">
+            ${reports.map(r=>`
+              <div class="emp-card" onclick="viewEmployee('${r.id}')">
+                ${avatar(r)}
+                <div class="emp-name">${r.name}</div>
+                <div class="emp-pos">${r.position}</div>
+                <div class="emp-reg">${r.regNo}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>`:''})()}
+    `;
+  }
+
+  if(tab === 'leaves'){
+    const empLeaves = LEAVE_REQS.filter(l => l.empId === e.id).sort((a,b)=>b.appliedDate.localeCompare(a.appliedDate));
+    const totalUsed = empLeaves.filter(l=>l.status==='approved').reduce((s,l)=>s+l.days,0);
+    const totalPending = empLeaves.filter(l=>l.status==='pending').reduce((s,l)=>s+l.days,0);
+
+    return `
+      <div class="sgrid g4">
+        <div class="sc bl"><div class="sl">Total Requests</div><div class="sv">${empLeaves.length}</div></div>
+        <div class="sc gr"><div class="sl">Days Approved</div><div class="sv">${totalUsed}</div></div>
+        <div class="sc am"><div class="sl">Pending</div><div class="sv">${totalPending}</div></div>
+        <div class="sc te"><div class="sl">Rejected</div><div class="sv">${empLeaves.filter(l=>l.status==='rejected').length}</div></div>
+      </div>
+      <div class="card">
+        <div class="ch"><div class="ct">Leave History</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Doc #</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Applied</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${empLeaves.map(l=>{
+                const lt = LEAVE_TYPES.find(t=>t.id===l.leaveType);
+                return `<tr>
+                  <td><span class="docno">${l.docNo}</span></td>
+                  <td>${lt?lt.icon+' '+lt.name:l.leaveType}</td>
+                  <td>${fmtDateShort(l.from)}</td>
+                  <td>${fmtDateShort(l.to)}</td>
+                  <td><strong>${l.days}</strong></td>
+                  <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${htmlEsc(l.reason)}</td>
+                  <td>${fmtDateShort(l.appliedDate)}</td>
+                  <td>${leaveBadge(l.status)}</td>
+                  <td><button class="btn btn-xs" onclick="viewLeave('${l.id}')">View</button></td>
+                </tr>`;
+              }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--t3);padding:24px">No leave requests yet</td></tr>'}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'attendance'){
+    const empAttendance = ATTENDANCE.filter(a => a.empId === e.id).sort((a,b)=>b.date.localeCompare(a.date));
+    const completed = empAttendance.filter(a=>a.signIn&&a.signOut);
+    const avgHrs = completed.length?completed.map(a=>{
+      const[ih,im]=a.signIn.split(':').map(Number);
+      const[oh,om]=a.signOut.split(':').map(Number);
+      return ((oh*60+om)-(ih*60+im))/60;
+    }).reduce((s,h)=>s+h,0)/completed.length:0;
+    return `
+      <div class="sgrid g4">
+        <div class="sc bl"><div class="sl">Days On Record</div><div class="sv">${empAttendance.filter(a=>a.signIn).length}</div></div>
+        <div class="sc gr"><div class="sl">Avg Hours/Day</div><div class="sv">${avgHrs.toFixed(1)}</div></div>
+        <div class="sc am"><div class="sl">Late Days</div><div class="sv">${empAttendance.filter(a=>a.signIn>'09:00').length}</div></div>
+        <div class="sc rd"><div class="sl">Absent</div><div class="sv">${empAttendance.filter(a=>a.status==='absent').length}</div></div>
+      </div>
+      <div class="card">
+        <div class="ch"><div class="ct">Attendance Records</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Date</th><th>Sign In</th><th>Method</th><th>Sign Out</th><th>Hours</th><th>Status</th></tr></thead>
+            <tbody>
+              ${empAttendance.slice(0,30).map(a=>{
+                let hrs='—';
+                if(a.signIn&&a.signOut){
+                  const[ih,im]=a.signIn.split(':').map(Number);
+                  const[oh,om]=a.signOut.split(':').map(Number);
+                  hrs=(((oh*60+om)-(ih*60+im))/60).toFixed(2);
+                }
+                return `<tr>
+                  <td>${fmtDate(a.date)}</td>
+                  <td>${a.signIn?`<span class="mono">${a.signIn}</span>${a.signIn>'09:00'?' <span class="bdg b-pap">late</span>':''}`:'<span style="color:var(--t3)">—</span>'}</td>
+                  <td>${a.inMethod?`<span class="bdg b-sub">${a.inMethod==='fingerprint'?'👆':'📱'} ${a.inMethod}</span>`:'—'}</td>
+                  <td>${a.signOut?`<span class="mono">${a.signOut}</span>`:'<span style="color:var(--t3)">—</span>'}</td>
+                  <td><span class="mono">${hrs}</span></td>
+                  <td><span class="bdg ${a.status==='completed'?'b-paid':a.status==='active'?'b-app':a.status==='absent'?'b-rej':'b-pap'}">${a.status}</span></td>
+                </tr>`;
+              }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:24px">No attendance records</td></tr>'}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'payroll'){
+    const periods = [];
+    const d = new Date();
+    for(let i=0;i<12;i++){
+      const dt = new Date(d.getFullYear(), d.getMonth()-i-1, 1);
+      periods.push(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`);
+    }
+    return `
+      <div class="card">
+        <div class="ch"><div class="ct">Payslip History</div><div class="cs">Last 12 months</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Period</th><th>Payslip #</th><th>Gross</th><th>Pension</th><th>Tax</th><th>Net</th><th></th></tr></thead>
+            <tbody>
+              ${periods.map(p=>{
+                const slip=generatePayslip(e.id,p);
+                const monthName = new Date(p+'-01').toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+                return `<tr>
+                  <td>${monthName}</td>
+                  <td><span class="docno">${slip.id}</span></td>
+                  <td><span class="mono">${fmt(slip.gross)}</span></td>
+                  <td><span class="mono" style="color:var(--red)">${fmt(slip.pension)}</span></td>
+                  <td><span class="mono" style="color:var(--red)">${fmt(slip.tax)}</span></td>
+                  <td><span class="mono" style="color:var(--green);font-weight:800">${fmt(slip.net)}</span></td>
+                  <td>
+                    <button class="btn btn-xs btn-p" onclick="viewPayslipFor('${e.id}','${p}')">View</button>
+                    <button class="btn btn-xs btn-g" onclick="pdfPayslip('${e.id}','${p}')">⬇️ PDF</button>
+                    <button class="btn btn-xs btn-o" onclick="emailDocument('payslip','${e.id}|${p}')">📧</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'documents'){
+    return `
+      <div class="card">
+        <div class="ch">
+          <div><div class="ct">Document Attachments</div><div class="cs">${(e.documents||[]).length} document${(e.documents||[]).length===1?'':'s'} on file</div></div>
+          ${isHRAdmin()?`<div class="brow"><button class="btn btn-p btn-sm" onclick="addEmpDoc('${e.id}')">📎 Upload Document</button></div>`:''}
+        </div>
+        <div class="cb">
+          <div id="empDocsList">${renderEmpDocsList(e)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'letters'){
+    const empDocuments = DOCUMENTS.filter(d => d.empId === e.id).sort((a,b)=>b.issuedDate.localeCompare(a.issuedDate));
+    return `
+      <div class="card">
+        <div class="ch"><div class="ct">Letters Issued</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Doc #</th><th>Title</th><th>Type</th><th>Purpose</th><th>Issued</th><th>By</th><th></th></tr></thead>
+            <tbody>
+              ${empDocuments.map(d=>{
+                const ib = findEmp(d.issuedBy);
+                const cls=d.kind==='warning'||d.kind==='termination'?'b-rej':d.kind==='service'?'b-paid':'b-sub';
+                return `<tr>
+                  <td><span class="docno">${d.docNo}</span></td>
+                  <td>${htmlEsc(d.title)}</td>
+                  <td><span class="bdg ${cls}">${d.kind}</span></td>
+                  <td style="font-size:11px;color:var(--t2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${htmlEsc(d.purpose||'')}</td>
+                  <td>${fmtDate(d.issuedDate)}</td>
+                  <td style="font-size:11px">${ib?ib.name:'—'}</td>
+                  <td>
+                    <button class="btn btn-xs" onclick="viewLetter('${d.id}')">View</button>
+                    <button class="btn btn-xs btn-g" onclick="pdfLetter('${d.id}')">⬇️ PDF</button>
+                    <button class="btn btn-xs btn-o" onclick="emailDocument('letter','${d.id}')">📧</button>
+                  </td>
+                </tr>`;
+              }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--t3);padding:24px">No letters issued yet</td></tr>'}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'evaluations'){
+    const empEvals = EVALUATIONS.filter(v => v.empId === e.id).sort((a,b)=>b.date.localeCompare(a.date));
+    return `
+      <div class="card">
+        <div class="ch"><div class="ct">Performance Evaluations</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Doc #</th><th>Period</th><th>Evaluator</th><th>Score</th><th>Date</th><th></th></tr></thead>
+            <tbody>
+              ${empEvals.map(ev=>{
+                const evor=findEmp(ev.evaluator);
+                const stars='★'.repeat(Math.round(ev.overallScore))+'☆'.repeat(5-Math.round(ev.overallScore));
+                const cls=ev.overallScore>=4.5?'b-paid':ev.overallScore>=3.5?'b-app':ev.overallScore>=2.5?'b-pap':'b-rej';
+                return `<tr>
+                  <td><span class="docno">${ev.docNo}</span></td>
+                  <td>${ev.period}</td>
+                  <td style="font-size:11px">${evor?evor.name:'—'}</td>
+                  <td><span class="bdg ${cls}">${stars} ${ev.overallScore.toFixed(1)}</span></td>
+                  <td>${fmtDate(ev.date)}</td>
+                  <td>
+                    <button class="btn btn-xs" onclick="viewEvaluation('${ev.id}')">View</button>
+                    <button class="btn btn-xs btn-g" onclick="pdfEvaluation('${ev.id}')">⬇️ PDF</button>
+                  </td>
+                </tr>`;
+              }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:24px">No evaluations yet</td></tr>'}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'inquiries'){
+    const empInquiries = INQUIRIES.filter(i => i.empId === e.id).sort((a,b)=>b.submittedDate.localeCompare(a.submittedDate));
+    return `
+      <div class="card">
+        <div class="ch"><div class="ct">Inquiries Raised</div></div>
+        <div class="cb flush">
+          <div class="tw"><table>
+            <thead><tr><th>Doc #</th><th>Subject</th><th>Category</th><th>Priority</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${empInquiries.map(i=>`<tr>
+                <td><span class="docno">${i.docNo}</span></td>
+                <td>${htmlEsc(i.subject)}</td>
+                <td><span class="bdg b-sub">${i.category}</span></td>
+                <td><span class="bdg ${i.priority==='high'?'b-rej':i.priority==='low'?'b-draft':'b-sub'}">${i.priority}</span></td>
+                <td>${fmtDate(i.submittedDate)}</td>
+                <td>${inqBadge(i.status)}</td>
+                <td><button class="btn btn-xs" onclick="viewInquiry('${i.id}')">View</button></td>
+              </tr>`).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--t3);padding:24px">No inquiries raised</td></tr>'}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(tab === 'emails'){
+    const empEmails = EMAIL_LOG.filter(m => m.empId === e.id).sort((a,b)=>b.sentDate.localeCompare(a.sentDate));
+    return `
+      <div class="card">
+        <div class="ch">
+          <div><div class="ct">Email Communication Log</div><div class="cs">All emails sent to ${e.name} via PeopleFlow</div></div>
+          <div class="brow"><button class="btn btn-p btn-sm" onclick="emailDocument('custom','${e.id}')">📧 Send New Email</button></div>
+        </div>
+        <div class="cb">
+          ${empEmails.length ? empEmails.map(m=>{
+            const sender = findEmp(m.sentBy);
+            return `<div style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span class="bdg b-sub">📧</span>
+                <strong style="font-size:13px;flex:1">${htmlEsc(m.subject)}</strong>
+                ${m.docRef?`<span class="docno" style="font-size:10px">${m.docRef}</span>`:''}
+                <span style="font-size:10px;color:var(--t3)">${m.sentDate}</span>
+              </div>
+              <div style="font-size:11px;color:var(--t2);margin-bottom:6px">From: ${sender?sender.name:m.sentBy}</div>
+              <div style="font-size:11px;color:var(--t2);background:var(--s2);padding:8px;border-radius:6px;white-space:pre-wrap;max-height:120px;overflow-y:auto;font-family:'Courier New',monospace">${htmlEsc(m.body)}</div>
+            </div>`;
+          }).join('') : '<div style="text-align:center;color:var(--t3);padding:30px">No emails sent yet</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  return '<div class="al al-i">Select a tab above</div>';
+}
+
+function viewEmployeeBasic(id){
   const e=findEmp(id); if(!e) return;
   const supervisor=findEmp(e.supervisor);
   const reports=getSupervisees(e.id);
@@ -2409,24 +3560,11 @@ function viewEmployee(id){
         <div>
           <div style="font-size:18px;font-weight:800">${e.name}</div>
           <div style="font-size:13px;color:var(--t2);margin-top:2px">${e.position}</div>
-          <div style="margin-top:6px"><span class="etag e-${e.entity}">${e.entity}</span> <span class="bdg b-sub">${DEPTS[e.department].name}</span> ${e.type==='foreign'?`<span class="bdg b-pap">🌍 ${e.nationality}</span>`:'<span class="bdg b-active">🇲🇻 Local</span>'}</div>
+          <div style="margin-top:6px"><span class="etag e-${e.entity}">${e.entity}</span> <span class="bdg b-sub">${DEPTS[e.department].name}</span></div>
           <div style="display:flex;gap:14px;margin-top:10px;font-size:12px;flex-wrap:wrap">
             <div>📧 ${e.email}</div>
             <div>📱 ${e.phone}</div>
-            <div>📅 Joined ${fmtDate(e.joinDate)}</div>
           </div>
-        </div>
-      </div>
-
-      <div class="fsec">Reporting</div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;font-weight:700">Reports To</div>
-          ${supervisor?`<div style="display:flex;align-items:center;gap:10px;margin-top:6px;padding:8px;background:var(--s2);border-radius:var(--r)">${avatar(supervisor,'emp-avatar sm')}<div><div style="font-weight:700">${supervisor.name}</div><div style="font-size:11px;color:var(--t2)">${supervisor.position}</div></div></div>`:'<div style="margin-top:6px;color:var(--t3)">— Top of org —</div>'}
-        </div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:10px;color:var(--t2);text-transform:uppercase;font-weight:700">Direct Reports (${reports.length})</div>
-          ${reports.length?reports.slice(0,4).map(r=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div class="emp-avatar xs" style="background:var(--blue)">${r.initials}</div><span style="font-size:12px">${r.name}</span></div>`).join(''):'<div style="margin-top:6px;color:var(--t3)">— None —</div>'}
         </div>
       </div>
 
@@ -2437,29 +3575,9 @@ function viewEmployee(id){
         ${e.socials.twitter?`<span class="social-chip">🐦 Twitter</span>`:''}
         ${e.socials.instagram?`<span class="social-chip">📷 Instagram</span>`:''}
       </div>`:''}
-
-      ${isHR()?`<div class="fsec">HR Details</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-        <div><strong>Address:</strong> ${e.address}</div>
-        <div><strong>DOB:</strong> ${fmtDate(e.dob)}</div>
-        <div><strong>Emergency:</strong> ${e.emergency.name} (${e.emergency.relation})</div>
-        <div><strong>Emergency Phone:</strong> ${e.emergency.phone}</div>
-        <div><strong>Bank:</strong> ${e.bankAcc.bank} · ${e.bankAcc.accNo}</div>
-        <div><strong>Salary:</strong> ${e.salary.currency} ${fmt(e.salary.basic+e.salary.allowances)} (${fmt(e.salary.basic)} + ${fmt(e.salary.allowances)})</div>
-      </div>`:''}
-
-      ${e.type==='foreign'&&e.foreign&&isHR()?`<div class="fsec">Foreign Employee Documents</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
-        <div><strong>Passport:</strong> ${e.foreign.passportNo} <span style="color:var(--t2)">(exp ${fmtDate(e.foreign.passportExpiry)})</span></div>
-        <div><strong>Visa:</strong> ${e.foreign.visaNo} <span style="color:var(--t2)">(exp ${fmtDate(e.foreign.visaExpiry)})</span></div>
-        <div><strong>Work Permit:</strong> ${e.foreign.workPermitNo} <span style="color:var(--t2)">(exp ${fmtDate(e.foreign.workPermitExpiry)})</span></div>
-        <div><strong>Quota Slot:</strong> ${e.foreign.quotaSlot} <span style="color:var(--t2)">(exp ${fmtDate(e.foreign.quotaExpiry)})</span></div>
-        <div><strong>Medical Insurance:</strong> exp ${fmtDate(e.foreign.medicalExpiry)}</div>
-      </div>`:''}
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Close</button>
-      ${isHRAdmin()?`<button class="btn btn-p" onclick="editEmployee('${e.id}')">✏️ Edit</button>`:''}
     </div>
   `,'lg');
 }
@@ -2607,6 +3725,7 @@ function renderLeaveMgmt(){
   return `
     <div class="ph">
       <div><div class="pt">Leave Requests Management</div><div class="ps">Approve, reject, and review all leave requests</div></div>
+      <div class="brow"><button class="btn btn-g" onclick="exportLeavesExcel()">⬇️ Export Excel</button></div>
     </div>
     <div class="tabs">
       ${tabs.map((t,i)=>`<button class="tab${TAB===i?' on':''}" onclick="TAB=${i};renderMain()">${t} ${i===0?`(${LEAVE_REQS.filter(l=>l.status==='pending').length})`:''}</button>`).join('')}
@@ -2832,7 +3951,7 @@ function renderAttendanceMgmt(){
   return `
     <div class="ph">
       <div><div class="pt">Attendance Logs</div><div class="ps">All employee sign-in / sign-out records</div></div>
-      <div class="brow"><button class="btn btn-p" onclick="alert('Export CSV')">⬇️ Export</button></div>
+      <div class="brow"><button class="btn btn-g" onclick="exportAttendanceExcel()">⬇️ Export Excel</button></div>
     </div>
 
     <div class="sgrid g4">
@@ -2890,6 +4009,7 @@ function renderEmployees(){
       <div class="brow">
         <button class="btn btn-p" onclick="openAddEmployee()">➕ Add Employee</button>
         <button class="btn" onclick="alert('Bulk import from CSV')">📤 Import CSV</button>
+        <button class="btn btn-g" onclick="exportEmployeesExcel()">⬇️ Export Excel</button>
       </div>
     </div>
 
@@ -3020,6 +4140,13 @@ function employeeForm(emp){
         <div class="fg"><label class="fl">Relation</label><input class="fi" id="ef_emrel" value="${htmlEsc(e.emergency.relation)}"></div>
         <div class="fg"><label class="fl">Phone</label><input class="fi" id="ef_emph" value="${htmlEsc(e.emergency.phone)}"></div>
       </div>
+
+      ${!isNew ? `
+      <div class="fsec">Document Attachments</div>
+      <div class="al al-i">📎 Upload supporting documents (NID, passport, certificates, contracts). Files are stored against this employee record and visible to HR at any time.</div>
+      <div id="empDocsList">${renderEmpDocsList(e)}</div>
+      <div class="upz" onclick="addEmpDoc('${e.id}')" style="margin-top:10px">📎 Click to upload a new document<br><small>NID · Passport · Visa · Certificate · Contract · Other</small></div>
+      ` : '<div class="al al-i">📎 You\'ll be able to upload documents after the employee is created.</div>'}
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Cancel</button>
@@ -3034,6 +4161,86 @@ function updateTypeFields(){
 
 function updateDeptOptions(){
   // We keep all depts available for simplicity in prototype
+}
+
+function renderEmpDocsList(e){
+  if(!e.documents || !e.documents.length){
+    return '<div style="text-align:center;color:var(--t3);padding:14px;font-size:11px">No documents on file</div>';
+  }
+  return e.documents.map(d=>`
+    <div class="att-slot">
+      <div class="att-ic">${d.type==='Passport'?'🛂':d.type==='Visa'?'📋':d.type==='Permit'?'📜':d.type==='NID'?'🪪':d.type==='Certificate'?'🎓':d.type==='Contract'?'📑':'📄'}</div>
+      <div class="att-name">${htmlEsc(d.name)} <span class="bdg b-sub" style="margin-left:6px">${d.type}</span></div>
+      <div class="att-size">${d.size||''} · ${fmtDateShort(d.date)}</div>
+      <button class="btn btn-xs" onclick="alert('File preview would open')">View</button>
+      <button class="btn btn-xs btn-r" onclick="removeEmpDoc('${e.id}','${d.id}')">✗</button>
+    </div>
+  `).join('');
+}
+
+function addEmpDoc(empId){
+  const e = findEmp(empId);
+  openModal(`
+    <div class="mh"><div class="mt">📎 Add Document for ${e.name}</div><button class="mc" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="fg2">
+        <div class="fg"><label class="fl">Document Type<span class="req">*</span></label>
+          <select class="fs" id="ad_type">
+            <option>NID</option>
+            <option>Passport</option>
+            <option>Visa</option>
+            <option>Permit</option>
+            <option>Certificate</option>
+            <option>Contract</option>
+            <option>Resume</option>
+            <option>Reference Letter</option>
+            <option>Medical Report</option>
+            <option>Police Clearance</option>
+            <option>Other</option>
+          </select></div>
+        <div class="fg"><label class="fl">Document Name<span class="req">*</span></label><input class="fi" id="ad_name" placeholder="e.g. National ID"></div>
+      </div>
+      <div class="fg"><label class="fl">Filename / Reference</label><input class="fi" id="ad_file" placeholder="e.g. nid-john.pdf"></div>
+      <div class="upz" onclick="alert('In production, this would open a file picker. For prototype, the document is registered as metadata.')">📎 Click to upload file<br><small>PDF · JPG · PNG · max 5 MB</small></div>
+      <div class="fg"><label class="fl">Notes</label><textarea class="fta" id="ad_notes" placeholder="Any notes about this document..."></textarea></div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveEmpDoc('${empId}')">📎 Add Document</button>
+    </div>
+  `);
+}
+
+function saveEmpDoc(empId){
+  const e = findEmp(empId);
+  const type = el('ad_type').value;
+  const name = el('ad_name').value.trim();
+  const file = el('ad_file').value.trim() || `${type.toLowerCase().replace(/\s+/g,'-')}-${e.id}.pdf`;
+  if(!name){ toast('Document name required','error'); return; }
+  if(!e.documents) e.documents = [];
+  const newDoc = {
+    id: 'd-'+e.id+'-'+(Date.now()),
+    type, name, file,
+    date: today(),
+    size: (Math.floor(Math.random()*900)+100) + ' KB'
+  };
+  e.documents.push(newDoc);
+  logAudit('document.upload', newDoc.id, `Added ${type} document "${name}" to ${e.name}`);
+  closeModal();
+  toast('Document added','success');
+  // Refresh the list inside the open employee form, if applicable
+  if(el('empDocsList')) el('empDocsList').innerHTML = renderEmpDocsList(e);
+  else renderMain();
+}
+
+function removeEmpDoc(empId, docId){
+  if(!confirm('Remove this document?')) return;
+  const e = findEmp(empId);
+  e.documents = (e.documents||[]).filter(d => d.id !== docId);
+  logAudit('document.remove', docId, `Removed document from ${e.name}`);
+  toast('Document removed','info');
+  if(el('empDocsList')) el('empDocsList').innerHTML = renderEmpDocsList(e);
+  else renderMain();
 }
 
 function saveEmployee(id){
@@ -3127,7 +4334,8 @@ function viewLetter(id){
     <div class="mf">
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn btn-p" onclick="window.print()">🖨️ Print</button>
-      <button class="btn btn-g" onclick="toast('Letter downloaded','success')">⬇️ Download PDF</button>
+      <button class="btn btn-g" onclick="pdfLetter('${d.id}')">⬇️ Download PDF</button>
+      <button class="btn btn-o" onclick="emailDocument('letter','${d.id}')">📧 Email to ${e.name.split(' ')[0]}</button>
     </div>
   `,'lg');
 }
@@ -3160,7 +4368,10 @@ function renderForeignEmps(){
   return `
     <div class="ph">
       <div><div class="pt">Foreign Employees</div><div class="ps">${foreigns.length} foreign employees · visa, permit, quota tracking</div></div>
-      <div class="brow"><button class="btn btn-p" onclick="openAddEmployee()">➕ Add Foreign Employee</button></div>
+      <div class="brow">
+        <button class="btn btn-p" onclick="openAddEmployee()">➕ Add Foreign Employee</button>
+        <button class="btn btn-g" onclick="exportForeignEmpsExcel()">⬇️ Export Excel</button>
+      </div>
     </div>
 
     <div class="sgrid g4">
@@ -3251,6 +4462,7 @@ function renderPayroll(){
               <td>${r.payflowRef?`<span class="ledger-chip" style="background:var(--blue2);color:var(--blue);font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px">↗ ${r.payflowRef}</span>`:'—'}</td>
               <td>
                 <button class="btn btn-xs" onclick="viewPayrollRun('${r.id}')">View</button>
+                <button class="btn btn-xs btn-g" onclick="exportPayrollRunExcel('${r.id}')">⬇️ Excel</button>
                 ${r.status==='draft'?`<button class="btn btn-xs btn-p" onclick="processPayroll('${r.id}')">Process</button>`:''}
               </td>
             </tr>`).join('')}
@@ -3276,15 +4488,16 @@ function newPayrollRun(){
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-p" onclick="initPayrollRun()">Run Pre-checks</button>
+      <button class="btn btn-p" onclick="initPayrollRun()">Run Pre-checks ▶</button>
     </div>
   `,'sm');
 }
 
-function initPayrollRun(){
-  const period=el('pr_period').value;
-  const entity=el('pr_entity').value;
-  const emps = EMPLOYEES.filter(e=>e.entity===entity);
+function initPayrollRun(entityArg, periodArg){
+  const period = periodArg || (el('pr_period') ? el('pr_period').value : null);
+  const entity = entityArg || (el('pr_entity') ? el('pr_entity').value : null);
+  if(!period || !entity){ toast('Period and entity are required', 'error'); return; }
+  const emps = EMPLOYEES.filter(e => e.entity === entity && e.role !== 'sysadmin');
   // Validation warnings
   const warnings = [];
   // 1. Missing attendance for current month
@@ -3414,18 +4627,33 @@ function approveAndHandoff(entity, period, totalGross, totalNet, count){
 }
 
 function finalizeHandoff(entity, period, ref, totalGross, totalNet, count){
-  // Add the run record
-  PAYROLL_RUNS.push({
-    id:`PR-${period}-${ENTITIES[entity].regPrefix}`, period, entity,
-    status:'paid', runDate:today(), totalGross, totalNet, employeeCount:count,
-    paidViaPayflow:true, payflowRef:ref
-  });
+  const id = `PR-${period}-${ENTITIES[entity].regPrefix}`;
+  const existing = PAYROLL_RUNS.find(r => r.id === id);
+  if(existing){
+    existing.status = 'paid';
+    existing.runDate = today();
+    existing.totalGross = totalGross;
+    existing.totalNet = totalNet;
+    existing.employeeCount = count;
+    existing.paidViaPayflow = true;
+    existing.payflowRef = ref;
+  } else {
+    PAYROLL_RUNS.push({
+      id, period, entity,
+      status:'paid', runDate:today(), totalGross, totalNet, employeeCount:count,
+      paidViaPayflow:true, payflowRef:ref
+    });
+  }
+  logAudit('payroll.run', id, `Payroll completed · ${count} employees · ${entity} ${period} · Net ${fmt(totalNet)} · PayFlow ref ${ref}`);
   closeModal();
   toast(`Payroll handed off to PayFlow · ${ref}`, 'success');
   renderMain();
 }
 
-function processPayroll(id){ initPayrollRun(); }
+function processPayroll(id){
+  const r = PAYROLL_RUNS.find(x => x.id === id); if(!r) return;
+  initPayrollRun(r.entity, r.period);
+}
 
 function viewPayrollRun(id){
   const r=PAYROLL_RUNS.find(x=>x.id===id); if(!r) return;
@@ -3507,77 +4735,79 @@ function renderDocumentsMgmt(){
 }
 
 function newLetter(){
+  const activeTemplates = LETTER_TEMPLATES.filter(t => t.active);
   openModal(`
-    <div class="mh"><div class="mt">Issue New Letter</div><button class="mc" onclick="closeModal()">×</button></div>
+    <div class="mh"><div class="mt">📝 Issue New Letter</div><button class="mc" onclick="closeModal()">×</button></div>
     <div class="mb">
-      <div class="al al-i">📄 Doc # auto-assigned: <span class="docno">${nextSeqPreview('PH-LTR')}</span></div>
+      <div class="al al-i">📄 Doc # auto-assigned: <span class="docno">${nextSeqPreview('PH-LTR')}</span> · Select a template and employee — placeholders will auto-fill from employee data.</div>
 
       <div class="fg2">
-        <div class="fg"><label class="fl">Letter Type<span class="req">*</span></label>
-          <select class="fs" id="ltKind" onchange="updateLetterTemplate()">
-            <option value="service">Service / Employment Verification</option>
-            <option value="salary">Salary Confirmation</option>
-            <option value="warning">Written Warning</option>
-            <option value="termination">Termination Letter</option>
-            <option value="appreciation">Letter of Appreciation</option>
-            <option value="offer">Offer Letter</option>
-            <option value="experience">Experience Certificate</option>
-            <option value="custom">Custom Letter</option>
+        <div class="fg"><label class="fl">Letter Template<span class="req">*</span></label>
+          <select class="fs" id="ltKind" onchange="applyLetterTemplate()">
+            ${activeTemplates.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+            <option value="custom">— Custom Letter (blank) —</option>
           </select></div>
         <div class="fg"><label class="fl">For Employee<span class="req">*</span></label>
-          <select class="fs" id="ltEmp">${EMPLOYEES.map(e=>`<option value="${e.id}">${e.name} — ${e.position}</option>`).join('')}</select></div>
+          <select class="fs" id="ltEmp" onchange="applyLetterTemplate()">${EMPLOYEES.filter(e=>e.role!=='sysadmin').map(e=>`<option value="${e.id}">${e.name} — ${e.position}</option>`).join('')}</select></div>
       </div>
 
       <div class="fg"><label class="fl">Title</label><input class="fi" id="ltTitle" placeholder="Letter title"></div>
-      <div class="fg"><label class="fl">Purpose</label><input class="fi" id="ltPurpose" placeholder="e.g. For visa application, for bank loan, etc."></div>
-      <div class="fg"><label class="fl">Letter Body<span class="req">*</span></label><textarea class="fta" id="ltContent" style="min-height:160px"></textarea></div>
+      <div class="fg"><label class="fl">Purpose / Reason<span class="req">*</span></label><input class="fi" id="ltPurpose" placeholder="e.g. Visa application · Bank loan · Disciplinary · etc." oninput="applyLetterTemplate()"></div>
+      <div class="fg"><label class="fl">Letter Body<span class="req">*</span> <small style="color:var(--t3);font-weight:400">— placeholders like {EMPLOYEE_NAME}, {SALARY} are auto-filled. Edit freely.</small></label>
+        <textarea class="fta" id="ltContent" style="min-height:240px;font-family:inherit"></textarea></div>
 
-      <div class="fsec">Approval</div>
-      <div class="al al-i">${isDirector()?'As HR Director, this letter will be issued immediately upon save.':'This draft will be sent to HR Director for sign-off before issue.'}</div>
+      <div class="fsec">Authorisation</div>
+      <div class="al ${isDirector()?'al-s':'al-i'}">${isDirector()?'✓ As HR Director, this letter will be issued immediately upon save.':'This draft will be sent to HR Director for sign-off before issue.'}</div>
     </div>
     <div class="mf">
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-p" onclick="saveLetter()">${isDirector()?'Issue Letter':'Save & Send for Sign-off'}</button>
+      <button class="btn btn-p" onclick="saveLetter()">${isDirector()?'✓ Issue Letter':'Save & Send for Sign-off'}</button>
     </div>
   `,'lg');
-  updateLetterTemplate();
+  applyLetterTemplate();
 }
 
-function updateLetterTemplate(){
-  const k=el('ltKind').value;
-  const titles={
-    service:'Employment Verification Letter',
-    salary:'Salary Confirmation Letter',
-    warning:'Written Warning',
-    termination:'Termination of Employment',
-    appreciation:'Letter of Appreciation',
-    offer:'Offer of Employment',
-    experience:'Experience Certificate',
-    custom:''
-  };
-  const templates={
-    service:'This is to certify that {EMPLOYEE} has been employed with {COMPANY} as a {POSITION} since {JOIN_DATE}. {EMPLOYEE} is currently a permanent member of staff and is in good standing.',
-    salary:'This is to confirm that {EMPLOYEE}, employed as {POSITION}, draws a monthly basic salary of {SALARY} effective from {JOIN_DATE}.',
-    warning:'This letter serves as a formal written warning for {REASON}. We expect immediate improvement and any further occurrence may lead to further disciplinary action up to and including termination.',
-    termination:'Following our discussions, this letter confirms the termination of your employment with {COMPANY} effective {DATE}. Please return all company property and complete the exit formalities with HR.',
-    appreciation:'On behalf of {COMPANY}, we wish to express our sincere appreciation for your outstanding contribution and dedication. Your efforts have been instrumental in our success.',
-    offer:'We are pleased to offer you the position of {POSITION} at {COMPANY}, commencing {DATE}. The offered package includes a basic salary of {SALARY}.',
-    experience:'This is to certify that {EMPLOYEE} was employed with {COMPANY} as {POSITION} from {JOIN_DATE} to {END_DATE}. During the tenure, the employee performed responsibilities to our satisfaction.',
-    custom:''
-  };
-  el('ltTitle').value=titles[k]||'';
-  el('ltContent').value=templates[k]||'';
+function applyLetterTemplate(){
+  const tplId = el('ltKind').value;
+  const empId = el('ltEmp').value;
+  const purpose = el('ltPurpose').value || '[purpose]';
+  const emp = findEmp(empId);
+  if(!emp) return;
+  if(tplId === 'custom'){
+    el('ltTitle').value = '';
+    el('ltContent').value = '';
+    return;
+  }
+  const tpl = LETTER_TEMPLATES.find(t => t.id === tplId); if(!tpl) return;
+  el('ltTitle').value = tpl.title;
+  el('ltContent').value = fillPlaceholders(tpl.body, emp, { purpose });
 }
 
 function saveLetter(){
-  const kind=el('ltKind').value, empId=el('ltEmp').value, title=el('ltTitle').value, purpose=el('ltPurpose').value, content=el('ltContent').value;
-  if(!title||!content){ toast('Title and body are required','error'); return; }
-  const docNo=nextDocNo('PH-LTR');
-  DOCUMENTS.push({ id:docNo, docNo, kind, title, empId, purpose, content,
-    issuedDate:today(), issuedBy:CU.id, status:'issued' });
+  const tplId = el('ltKind').value;
+  const tpl = LETTER_TEMPLATES.find(t => t.id === tplId);
+  const kind = tpl ? tpl.kind : 'custom';
+  const empId = el('ltEmp').value;
+  const title = el('ltTitle').value.trim();
+  const purpose = el('ltPurpose').value.trim();
+  const content = el('ltContent').value.trim();
+  if(!title || !content || !purpose){ toast('Title, purpose, and body are required','error'); return; }
+  const docNo = nextDocNo('PH-LTR');
+  const newDoc = { id:docNo, docNo, kind, title, empId, purpose, content,
+    issuedDate:today(), issuedBy:CU.id, status:'issued' };
+  DOCUMENTS.push(newDoc);
+  const emp = findEmp(empId);
+  logAudit('letter.issue', docNo, `Issued ${tpl?tpl.name:'custom letter'} to ${emp.name}`);
   closeModal();
   toast(`Letter issued · ${docNo}`,'success');
-  renderMain();
+  // Offer to email
+  setTimeout(()=>{
+    if(confirm(`Letter ${docNo} issued. Email it to ${emp.name} now?`)){
+      emailDocument('letter', docNo);
+    } else {
+      renderMain();
+    }
+  }, 200);
 }
 
 // ═══════════════════════════════════════════════════
@@ -3727,11 +4957,11 @@ function viewEvaluation(id){
     <div class="mf">
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn btn-p" onclick="window.print()">🖨️ Print</button>
+      <button class="btn btn-g" onclick="pdfEvaluation('${ev.id}')">⬇️ Download PDF</button>
+      <button class="btn btn-o" onclick="emailDocument('evaluation','${ev.id}')">📧 Email to ${e.name.split(' ')[0]}</button>
     </div>
   `,'lg');
 }
-
-// ── Appraisal Templates Admin ──
 function renderAppraisalTemplates(){
   return `
     <div class="ph">
@@ -4080,6 +5310,336 @@ function renderFingerprint(){
   `;
 }
 
+
+// ═══════════════════════════════════════════════════
+//  LETTER TEMPLATES ADMIN
+// ═══════════════════════════════════════════════════
+function renderLetterTemplatesAdmin(){
+  const placeholders = ['EMPLOYEE_NAME','FIRST_NAME','POSITION','DEPARTMENT','ENTITY_NAME','REG_NO','JOIN_DATE','SALARY','BASIC','ALLOWANCES','DATE','EMAIL','PHONE','NATIONALITY','SUPERVISOR','PURPOSE','END_DATE'];
+  return `
+    <div class="ph">
+      <div><div class="pt">Letter Templates</div><div class="ps">Default letter formats with auto-fill placeholders</div></div>
+      <div class="brow"><button class="btn btn-p" onclick="editLetterTemplate(null)">➕ New Template</button></div>
+    </div>
+
+    <div class="al al-i">📝 Available placeholders — these auto-fill when a letter is created from a template:
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        ${placeholders.map(p=>`<code style="background:var(--blue2);color:var(--blue);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">{${p}}</code>`).join('')}
+      </div>
+    </div>
+
+    ${LETTER_TEMPLATES.map((t,i)=>`
+      <div class="card">
+        <div class="ch">
+          <div>
+            <div class="ct">${t.title} ${t.active?'<span class="bdg b-active" style="margin-left:6px">Active</span>':'<span class="bdg b-inactive" style="margin-left:6px">Inactive</span>'}</div>
+            <div class="cs">Type: <strong>${t.kind}</strong> · ID: <code>${t.id}</code></div>
+          </div>
+          <div class="brow">
+            <button class="btn btn-sm" onclick="editLetterTemplate(${i})">✏️ Edit</button>
+            <button class="btn btn-sm btn-r" onclick="toggleLetterTemplate(${i})">${t.active?'Disable':'Enable'}</button>
+          </div>
+        </div>
+        <div class="cb">
+          <div style="background:var(--s2);border-radius:var(--r);padding:14px;font-size:12px;white-space:pre-wrap;max-height:200px;overflow-y:auto;font-family:'Courier New',monospace">${htmlEsc(t.body)}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function editLetterTemplate(idx){
+  const t = idx===null ? { id:'', kind:'service', name:'', title:'', body:'', active:true } : LETTER_TEMPLATES[idx];
+  openModal(`
+    <div class="mh"><div class="mt">${idx===null?'New':'Edit'} Letter Template</div><button class="mc" onclick="closeModal()">×</button></div>
+    <div class="mb">
+      <div class="fg2">
+        <div class="fg"><label class="fl">Template ID<span class="req">*</span></label><input class="fi" id="tpl_id" value="${t.id}" ${idx===null?'':'readonly style="background:var(--s2)"'}></div>
+        <div class="fg"><label class="fl">Letter Kind<span class="req">*</span></label>
+          <select class="fs" id="tpl_kind">
+            ${['service','salary','warning','termination','appreciation','offer','experience','promotion','custom'].map(k=>`<option value="${k}" ${t.kind===k?'selected':''}>${k}</option>`).join('')}
+          </select></div>
+      </div>
+      <div class="fg"><label class="fl">Template Name<span class="req">*</span></label><input class="fi" id="tpl_name" value="${htmlEsc(t.name)}"></div>
+      <div class="fg"><label class="fl">Default Title<span class="req">*</span></label><input class="fi" id="tpl_title" value="${htmlEsc(t.title)}"></div>
+      <div class="fg"><label class="fl">Body Template<span class="req">*</span> <small style="color:var(--t3);font-weight:400">— use {EMPLOYEE_NAME}, {POSITION}, {SALARY}, etc.</small></label>
+        <textarea class="fta" id="tpl_body" style="min-height:300px;font-family:'Courier New',monospace;font-size:11px">${htmlEsc(t.body)}</textarea></div>
+    </div>
+    <div class="mf">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveLetterTemplate(${idx===null?'null':idx})">Save Template</button>
+    </div>
+  `,'lg');
+}
+
+function saveLetterTemplate(idx){
+  const data = {
+    id: el('tpl_id').value.trim(),
+    kind: el('tpl_kind').value,
+    name: el('tpl_name').value.trim(),
+    title: el('tpl_title').value.trim(),
+    body: el('tpl_body').value,
+    active: idx===null?true:LETTER_TEMPLATES[idx].active
+  };
+  if(!data.id||!data.name||!data.title||!data.body){ toast('Fill all required fields','error'); return; }
+  if(idx===null) LETTER_TEMPLATES.push(data); else LETTER_TEMPLATES[idx]=data;
+  logAudit('config.update','LETTER_TEMPLATE.'+data.id,`${idx===null?'Created':'Updated'} letter template "${data.name}"`);
+  closeModal(); toast('Template saved','success'); renderMain();
+}
+
+function toggleLetterTemplate(idx){
+  LETTER_TEMPLATES[idx].active = !LETTER_TEMPLATES[idx].active;
+  logAudit('config.update','LETTER_TEMPLATE.'+LETTER_TEMPLATES[idx].id,`${LETTER_TEMPLATES[idx].active?'Enabled':'Disabled'} template`);
+  toast(`Template ${LETTER_TEMPLATES[idx].active?'enabled':'disabled'}`,'success');
+  renderMain();
+}
+
+// ═══════════════════════════════════════════════════
+//  SYSTEM ADMIN PAGES
+// ═══════════════════════════════════════════════════
+
+// ── User Management ──
+function renderAdminUsers(){
+  if(!isSysAdmin()){ return `<div class="al al-r">🔒 System Administrator access required</div>`; }
+  const roleLabels = {
+    sysadmin:'System Admin', hr_director:'HR Director', hr_manager:'HR Manager',
+    hr_assistant:'HR Assistant', employee:'Employee'
+  };
+  return `
+    <div class="ph">
+      <div><div class="pt">User Management</div><div class="ps">All system users and access roles</div></div>
+      <div class="brow"><button class="btn btn-p" onclick="openAddEmployee()">➕ Add User</button></div>
+    </div>
+
+    <div class="sgrid g4">
+      <div class="sc bl"><div class="sl">Total Users</div><div class="sv">${EMPLOYEES.length}</div></div>
+      <div class="sc rd"><div class="sl">System Admins</div><div class="sv">${EMPLOYEES.filter(e=>e.role==='sysadmin').length}</div></div>
+      <div class="sc gr"><div class="sl">HR Roles</div><div class="sv">${EMPLOYEES.filter(e=>['hr_director','hr_manager','hr_assistant'].includes(e.role)).length}</div></div>
+      <div class="sc te"><div class="sl">Need Pwd Reset</div><div class="sv">${EMPLOYEES.filter(e=>e.mustChangePwd).length}</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">All System Users</div></div>
+      <div class="cb flush">
+        <div class="tw"><table>
+          <thead><tr><th>User</th><th>Email (login)</th><th>Role</th><th>Entity</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+          <tbody>
+            ${EMPLOYEES.map(e=>{
+              const lastLogin = AUDIT_LOG.find(a=>a.who===e.id && a.action==='login');
+              return `<tr>
+                <td><div style="display:flex;align-items:center;gap:8px">${avatar(e,'emp-avatar xs')}<div><div style="font-weight:600">${e.name}</div><div style="font-size:10px;color:var(--t2)">${e.position}</div></div></div></td>
+                <td><code style="font-size:11px">${e.email}</code></td>
+                <td><span class="bdg ${e.role==='sysadmin'?'b-rej':e.role==='hr_director'?'b-app':e.role.startsWith('hr_')?'b-sub':'b-draft'}">${roleLabels[e.role]||e.role}</span></td>
+                <td><span class="etag e-${e.entity}">${e.entity}</span></td>
+                <td>${e.mustChangePwd?'<span class="bdg b-pap">Pwd Reset</span>':'<span class="bdg b-active">Active</span>'}</td>
+                <td style="font-size:11px;color:var(--t2)">${lastLogin?lastLogin.date:'—'}</td>
+                <td>
+                  <button class="btn btn-xs" onclick="viewEmployee('${e.id}')">View</button>
+                  <button class="btn btn-xs" onclick="resetUserPwd('${e.id}')">🔑 Reset Pwd</button>
+                  <button class="btn btn-xs btn-p" onclick="editEmployee('${e.id}')">Edit Role</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  `;
+}
+
+function resetUserPwd(empId){
+  const e = findEmp(empId);
+  if(!confirm(`Reset password for ${e.name}? They'll be required to set a new one on next login.`)) return;
+  e.pass = 'TempPass@2026';
+  e.mustChangePwd = true;
+  logAudit('user.pwdReset', e.id, `Password reset for ${e.name}`);
+  toast(`Password reset · temporary password: TempPass@2026`,'success');
+  renderMain();
+}
+
+// ── Audit Log ──
+function renderAdminAudit(){
+  if(!isSysAdmin()){ return `<div class="al al-r">🔒 System Administrator access required</div>`; }
+  return `
+    <div class="ph">
+      <div><div class="pt">Audit Log</div><div class="ps">${AUDIT_LOG.length} events recorded</div></div>
+      <div class="brow"><button class="btn btn-g" onclick="exportAuditExcel()">⬇️ Export Excel</button></div>
+    </div>
+
+    <div class="card">
+      <div class="cb flush">
+        <div class="tw"><table>
+          <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+          <tbody>
+            ${AUDIT_LOG.slice(0,200).map(a=>{
+              const e = findEmp(a.who);
+              const cls = a.action.startsWith('payroll')?'b-app':a.action.startsWith('letter')?'b-sub':a.action.startsWith('config')?'b-pap':a.action.startsWith('login')?'b-paid':'b-draft';
+              return `<tr>
+                <td style="font-size:11px;font-family:monospace">${a.date}</td>
+                <td>${e?`<div style="display:flex;align-items:center;gap:6px">${avatar(e,'emp-avatar xs')}<span style="font-size:11px">${e.name}</span></div>`:`<span style="color:var(--t2)">${a.who}</span>`}</td>
+                <td><span class="bdg ${cls}">${a.action}</span></td>
+                <td>${a.target?`<span class="docno" style="font-size:11px">${a.target}</span>`:'—'}</td>
+                <td style="font-size:11px;color:var(--t2)">${htmlEsc(a.details)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  `;
+}
+
+function exportAuditExcel(){
+  const rows = AUDIT_LOG.map(a => ({
+    'Timestamp': a.date,
+    'User ID':   a.who,
+    'User Name': findEmp(a.who)?.name || a.who,
+    'Action':    a.action,
+    'Target':    a.target,
+    'Details':   a.details
+  }));
+  exportExcel(rows, 'AuditLog', `AuditLog_${today()}.xlsx`);
+}
+
+// ── Entities & Departments Admin ──
+function renderAdminEntities(){
+  if(!isSysAdmin()){ return `<div class="al al-r">🔒 System Administrator access required</div>`; }
+  return `
+    <div class="ph">
+      <div><div class="pt">Entities & Departments</div><div class="ps">Configure organisation structure</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">Group Entities</div><div class="cs">${Object.keys(ENTITIES).length} entities · matches PayFlow Pro</div></div>
+      <div class="cb flush">
+        <div class="tw"><table>
+          <thead><tr><th>Code</th><th>Full Name</th><th>Reg Prefix</th><th>Payslip Prefix</th><th>Employees</th><th></th></tr></thead>
+          <tbody>
+            ${Object.entries(ENTITIES).map(([k,v])=>`<tr>
+              <td><span class="etag e-${k}">${k}</span></td>
+              <td><strong>${v.name}</strong></td>
+              <td><code>${v.regPrefix}</code></td>
+              <td><code>${v.payslipPrefix}</code></td>
+              <td>${EMPLOYEES.filter(e=>e.entity===k).length}</td>
+              <td><button class="btn btn-xs">Edit</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">Departments</div><div class="cs">${Object.keys(DEPTS).length} departments across all entities</div></div>
+      <div class="cb flush">
+        <div class="tw"><table>
+          <thead><tr><th>Code</th><th>Name</th><th>Entity</th><th>Head Count</th><th></th></tr></thead>
+          <tbody>
+            ${Object.entries(DEPTS).map(([k,v])=>`<tr>
+              <td><code>${k}</code></td>
+              <td><strong>${v.name}</strong></td>
+              <td><span class="etag e-${v.entity}">${v.entity}</span></td>
+              <td>${EMPLOYEES.filter(e=>e.department===k).length}</td>
+              <td><button class="btn btn-xs">Edit</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Backup & Restore ──
+function renderAdminBackup(){
+  if(!isSysAdmin()){ return `<div class="al al-r">🔒 System Administrator access required</div>`; }
+  return `
+    <div class="ph">
+      <div><div class="pt">Backup & Restore</div><div class="ps">Export and restore system data</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">💾 Full Data Export</div></div>
+      <div class="cb">
+        <p style="font-size:12px;color:var(--t2);margin-bottom:12px">Download a complete JSON snapshot of all PeopleFlow data — employees, leaves, attendance, payroll, documents, evaluations, configurations, and audit log.</p>
+        <button class="btn btn-p" onclick="exportFullBackup()">⬇️ Download Full Backup (JSON)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">📊 Excel Bulk Exports</div></div>
+      <div class="cb">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+          <button class="btn btn-g" onclick="exportEmployeesExcel()">⬇️ Employees</button>
+          <button class="btn btn-g" onclick="exportAttendanceExcel()">⬇️ Attendance</button>
+          <button class="btn btn-g" onclick="exportLeavesExcel()">⬇️ Leaves</button>
+          <button class="btn btn-g" onclick="exportForeignEmpsExcel()">⬇️ Foreign Employees</button>
+          <button class="btn btn-g" onclick="exportAuditExcel()">⬇️ Audit Log</button>
+          <button class="btn btn-g" onclick="exportAllPayslipsExcel()">⬇️ All Payslips (Current Month)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">⚠️ Restore from Backup</div></div>
+      <div class="cb">
+        <div class="al al-w">⚠️ Restoring will replace all current data. This action cannot be undone. Always download a backup first.</div>
+        <div class="upz" onclick="alert('Restore feature would prompt for backup JSON file')">📤 Click to upload backup JSON file</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><div class="ct">📈 System Statistics</div></div>
+      <div class="cb">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">
+          <div><strong>Employees:</strong> ${EMPLOYEES.length}</div>
+          <div><strong>Leave Requests:</strong> ${LEAVE_REQS.length}</div>
+          <div><strong>Attendance Records:</strong> ${ATTENDANCE.length}</div>
+          <div><strong>Letters Issued:</strong> ${DOCUMENTS.length}</div>
+          <div><strong>Payroll Runs:</strong> ${PAYROLL_RUNS.length}</div>
+          <div><strong>Inquiries:</strong> ${INQUIRIES.length}</div>
+          <div><strong>Evaluations:</strong> ${EVALUATIONS.length}</div>
+          <div><strong>Audit Events:</strong> ${AUDIT_LOG.length}</div>
+          <div><strong>Email Log:</strong> ${EMAIL_LOG.length}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function exportFullBackup(){
+  const backup = {
+    version:'2.0',
+    exportDate: new Date().toISOString(),
+    entities: ENTITIES, depts: DEPTS,
+    employees: EMPLOYEES, attendance: ATTENDANCE, leaves: LEAVE_REQS,
+    inquiries: INQUIRIES, payroll: PAYROLL_RUNS, documents: DOCUMENTS,
+    evaluations: EVALUATIONS, leaveTypes: LEAVE_TYPES, letterTemplates: LETTER_TEMPLATES,
+    appraisalTemplates: APPRAISAL_TEMPLATES, approvalWorkflows: APPROVAL_WORKFLOWS,
+    countryFees: COUNTRY_FEES, regConfig: REG_CONFIG, dashboardPerms: DASHBOARD_PERMS,
+    policies: POLICIES, policyAcks: POLICY_ACKS, sequences: SEQUENCES,
+    auditLog: AUDIT_LOG, emailLog: EMAIL_LOG
+  };
+  const blob = new Blob([JSON.stringify(backup,null,2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `peopleflow-backup-${today()}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Backup downloaded','success');
+  logAudit('backup.export','full',`Full system backup downloaded`);
+}
+
+function exportAllPayslipsExcel(){
+  const period = today().slice(0,7);
+  const rows = EMPLOYEES.filter(e=>e.role!=='sysadmin').map(e=>{
+    const s = generatePayslip(e.id, period);
+    return {
+      'Reg No': e.regNo, 'Name': e.name, 'Entity': e.entity, 'Position': e.position,
+      'Bank': e.bankAcc.bank, 'Account': e.bankAcc.accNo,
+      'Basic': s.basic, 'Allowances': s.allowances, 'Gross': s.gross,
+      'Pension': s.pension, 'Tax': s.tax, 'Net': s.net, 'Currency': e.salary.currency
+    };
+  });
+  exportExcel(rows, `Payslips_${period}`, `AllPayslips_${period}.xlsx`);
+}
 
 // ═══════════════════════════════════════════════════
 //  INITIALISATION
